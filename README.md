@@ -98,12 +98,45 @@ python -m venv .venv
 
 PowerShell: `.\.venv\Scripts\Activate.ps1`. Git Bash: `source .venv/Scripts/activate`.
 
-**Machine with an NVIDIA GPU:** install the CUDA build of PyTorch first. Pick the index URL that matches
-your driver at https://pytorch.org/get-started/locally/.
+**Machine with an NVIDIA GPU:** install the CUDA build of PyTorch *before* `requirements.txt`. The plain
+`pip install torch` gives a CPU-only build on Windows.
 
-```bash
-pip install torch==2.15.0 torchvision==0.29.2 --index-url https://download.pytorch.org/whl/cu126
-```
+1. Check the Python is 64-bit and a supported version (3.11–3.15 for torch 2.15; 3.10–3.14 for 2.14):
+
+   ```bash
+   python -c "import sys, struct; print(sys.version, struct.calcsize('P') * 8, 'bit')"
+   ```
+
+2. Check the highest CUDA version your NVIDIA driver supports: the `CUDA Version` at the top right of
+
+   ```bash
+   nvidia-smi
+   ```
+
+3. Install from the newest index that is **not higher** than that number:
+
+   | `nvidia-smi` CUDA Version | Index | Gets |
+   |---|---|---|
+   | 13.2 or newer | `cu132` | torch 2.15.0 + torchvision 0.29.1 |
+   | 13.0 – 13.1 | `cu130` | torch 2.14.1 + torchvision 0.29.1 |
+   | 12.6 – 12.9, or a GTX 10-series / older card | `cu126` | torch 2.14.1 + torchvision 0.29.1 |
+   | below 12.6 | update the NVIDIA driver first | |
+
+   For example, for `cu132`:
+
+   ```bash
+   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu132
+   ```
+
+   Don't pin `torchvision==0.29.2`: that version exists only as a CPU build, so pinning it gives
+   *"No matching distribution found"* on the CUDA indexes. The current list of builds is at
+   https://pytorch.org/get-started/locally/.
+
+4. Confirm the GPU is visible:
+
+   ```bash
+   python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else '')"
+   ```
 
 Then, on every machine:
 
@@ -111,11 +144,8 @@ Then, on every machine:
 pip install -r requirements.txt
 ```
 
-Check that the GPU is visible (prints `True` on a working CUDA setup):
-
-```bash
-python -c "import torch; print(torch.cuda.is_available())"
-```
+`requirements.txt` lists minimum versions only, so it keeps an already-installed CUDA build of torch and also
+works on other Python versions, Kaggle and Colab.
 
 The `.venv` on the original development laptop has the **CPU-only** PyTorch build (`2.15.0+cpu`), because that
 machine has no NVIDIA GPU. A CPU build never uses a GPU, even if one is present.
