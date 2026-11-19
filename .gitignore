@@ -1,0 +1,28 @@
+# Python / virtual environment
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Jupyter
+.ipynb_checkpoints/
+
+# image data (large; rebuilt with the scripts in scripts/)
+data/
+raw_data/
+new_data/
+rejected/
+_downloads/
+
+# training runs: checkpoints, plots, predictions
+output/
+*.pth
+*.pt
+*.ckpt
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
