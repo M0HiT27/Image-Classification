@@ -20,6 +20,11 @@ output/
 *.pt
 *.ckpt
 
+# local settings (api/.env.example is the committed template)
+.env
+*.env
+!.env.example
+
 # editors / OS
 .vscode/
 .idea/

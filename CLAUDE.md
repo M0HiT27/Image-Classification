@@ -104,6 +104,15 @@ imgcls.predict_folder("output/<model>/<timestamp>/best.pth", r"<hidden test fold
 The output has one row per image and the columns `filename, predicted_category`, using the briefing's names from
 `DISPLAY_NAMES` in `imgcls/config.py`. Check the row count equals the number of images in the folder.
 
+### Run or test the API
+
+- Start from the project root: `./.venv/Scripts/uvicorn.exe api.main:app --env-file api/.env`
+  (`api/.env` is git-ignored; copy it from `api/.env.example`). Docs page: `http://127.0.0.1:8000/docs`.
+- Keep it to the single `/predict` endpoint unless the user asks for more.
+- To test without blocking the shell, start `uvicorn.Server` in a thread (or the CLI via `subprocess`) from a
+  Python script in the scratchpad, poll until it is up, post images from `data/<class>/test/` with `httpx`, and
+  shut it down. Check both modes (with and without `IMGCLS_CHECKPOINT`) and a non-image upload (expect 400).
+
 ### Help with the report
 
 - Accuracy: the chosen run's `test_metrics.json`.
@@ -145,6 +154,7 @@ checkpoint becomes incompatible (class count changes).
 | `imgcls/engine.py` | `train`: AdamW, warm-up + cosine, AMP on CUDA, saves `best.pth` on val improvement, handles KeyboardInterrupt, falls back to single-process loading if loader workers hang or crash, writes `config.json`, `history.csv`, `summary.json`, `training_curves.png` |
 | `imgcls/evaluate.py` | `evaluate_run`: test metrics, predictions, top confusions, confusion matrix, misclassified grid |
 | `imgcls/predict.py` | `predict_folder`: deliverable CSV plus a detailed CSV |
+| `api/main.py` | FastAPI app, single endpoint `POST /predict`. Settings from env (`IMGCLS_CHECKPOINT`, `IMGCLS_MODEL`, `IMGCLS_DEVICE`, `IMGCLS_TOP_K`; template `api/.env.example`). With a checkpoint: our 10 categories. Without: the pretrained ImageNet model, with `IMAGENET_TO_CATEGORY` mapping ImageNet synsets to our categories (ImageNet-1k has no sunflower or pine cone) |
 | `scripts/create_notebook.py` | notebook generator: `PRESETS`, `config_fields` (settings cell), `build_notebook` (template) |
 | `scripts/fetch_openimages.py`, `extract_thudogs.py`, `fetch_commons.py` | data collection, kept as documentation; their outputs were deleted |
 | `scripts/screen_images.py`, `screen_pinecone_art.py`, `apply_screening.py` | data cleaning; thresholds are explained in comments in `apply_screening.py` |

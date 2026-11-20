@@ -24,6 +24,11 @@ jupyterlab>=4.0            # [4.6.6]
 nbformat>=5.9              # [5.11.1]
 nbconvert>=7.0             # [7.17.2]
 
+# prediction API (api/)
+fastapi>=0.110             # [0.165.0]
+uvicorn[standard]>=0.29    # [0.54.0]  (includes python-dotenv for --env-file)
+python-multipart>=0.0.9    # [0.0.34]  (file uploads)
+
 # data collection and cleaning (scripts/)
 open_clip_torch>=2.24      # [4.2.2]
 ImageHash>=4.3             # [4.3.2]

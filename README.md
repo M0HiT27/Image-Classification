@@ -11,6 +11,7 @@ all notebooks share the training code in `imgcls/`, so a fix there reaches every
 - [Training a model](#training-a-model)
 - [Adding a new model](#adding-a-new-model)
 - [Predicting the hidden test set](#predicting-the-hidden-test-set)
+- [Prediction API](#prediction-api)
 - [Writing the report](#writing-the-report)
 - [How the dataset was built](#how-the-dataset-was-built)
 - [Troubleshooting](#troubleshooting)
@@ -62,6 +63,9 @@ Images live in `data/<class>/train/` and `data/<class>/test/` (70/30 split, fixe
 
 ```
 Image Classification/
+├── api/
+│   ├── main.py                 FastAPI app with one endpoint: POST /predict
+│   └── .env.example            settings template (copy to api/.env)
 ├── data/                       cleaned images: data/<class>/{train,test}/   (not in git, only copy)
 ├── imgcls/                     shared training package used by every notebook
 │   ├── config.py               paths, class list, display names for the predictions file
@@ -322,6 +326,75 @@ imgcls.predict_folder("output/convnext_tiny/<timestamp>/best.pth", r"D:\path\to\
 
 - `predictions_detailed.csv` adds confidence and the 2nd/3rd guesses, useful for spotting uncertain images.
 - The model only knows the 10 classes it was trained on; any other image is forced into one of them.
+
+## Prediction API
+
+`api/main.py` serves a model over HTTP with a single endpoint, **`POST /predict`**: upload an image, get its
+category. The model is loaded once at startup.
+
+### Configure
+
+Copy `api/.env.example` to `api/.env` and edit it (`api/.env` is git-ignored):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `IMGCLS_CHECKPOINT` | empty | a `best.pth` from `output/<model>/<timestamp>/` (absolute, or relative to the project root). Set: the fine-tuned model predicts our 10 categories. Empty: the pretrained model from `IMGCLS_MODEL` is used as-is, not fine-tuned |
+| `IMGCLS_MODEL` | `mobilenetv3_large_100.ra_in1k` | timm architecture, used when there is no checkpoint. With a checkpoint it can stay empty; if set, it must match the checkpoint's architecture or the API refuses to start |
+| `IMGCLS_DEVICE` | `auto` | `auto` (GPU if available, otherwise CPU), `cuda` or `cpu` |
+| `IMGCLS_TOP_K` | `3` | number of guesses in `top_k` |
+
+Example `api/.env` for a fine-tuned model:
+
+```
+IMGCLS_CHECKPOINT=output/convnext_tiny/2026-11-20_10-15-00/best.pth
+IMGCLS_MODEL=
+IMGCLS_DEVICE=auto
+IMGCLS_TOP_K=3
+```
+
+### Run
+
+From the project root:
+
+```bash
+uvicorn api.main:app --env-file api/.env
+```
+
+Then open http://127.0.0.1:8000/docs to upload an image in the browser, or call it directly:
+
+```bash
+curl -F "file=@data/pug/test/n02110958_10193.jpg" http://127.0.0.1:8000/predict
+```
+
+Add `--host 0.0.0.0` to reach it from other machines on the network. Environment variables set in the shell
+work too, without `--env-file`.
+
+### Response
+
+```json
+{
+  "filename": "n02110958_10193.jpg",
+  "category": "Pug",
+  "label": "Pug",
+  "confidence": 0.9137,
+  "top_k": [
+    {"label": "Pug", "category": "Pug", "confidence": 0.9137},
+    {"label": "Banana", "category": "Banana", "confidence": 0.0174},
+    {"label": "Golden retriever", "category": "Golden retriever", "confidence": 0.0159}
+  ],
+  "model": "mobilenetv3_large_100.ra_in1k",
+  "mode": "fine-tuned",
+  "checkpoint": "D:\\Image Classification\\output\\mobilenetv3_large\\2026-11-19_22-05-15\\best.pth"
+}
+```
+
+- **Fine-tuned mode:** `label` and `category` are always one of the 10 categories.
+- **Pretrained mode** (no checkpoint): `label` is the ImageNet class (e.g. `"cabbage butterfly"`, `"daisy"`), and
+  `category` is filled only when that ImageNet class corresponds to one of ours: the 4 dog breeds (ImageNet's
+  "Eskimo dog" counts as Siberian husky), 6 butterfly species, banana, orange and 7 kinds of mushroom/fungus.
+  **ImageNet-1k has no sunflower or pine cone class**, so those come back with `category: null` (a sunflower is
+  usually called `"daisy"`). Models with ImageNet-21k/22k heads do know sunflowers.
+- Errors: `400` for an empty or unreadable upload, `413` above 20 MB, `422` when no `file` field is sent.
 
 ## Writing the report
 
