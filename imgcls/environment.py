@@ -24,15 +24,17 @@ DATA_ZIP_NAME = "imgcls_data.zip"
 
 
 def detect():
-    """'colab', 'kaggle' or 'local'."""
+    """'kaggle', 'colab' or 'local'."""
+    # Kaggle first: Kaggle notebooks are built on Colab's image, so google.colab is importable there too
+    # (but Google Drive can't be mounted there)
+    if os.environ.get("KAGGLE_KERNEL_RUN_TYPE") or Path(KAGGLE_INPUT).is_dir():
+        return "kaggle"
     try:
         in_colab = importlib.util.find_spec("google.colab") is not None
     except (ImportError, ValueError):
         in_colab = False
     if in_colab or os.environ.get("COLAB_RELEASE_TAG"):
         return "colab"
-    if os.environ.get("KAGGLE_KERNEL_RUN_TYPE") or Path("/kaggle/input").is_dir():
-        return "kaggle"
     return "local"
 
 
@@ -92,11 +94,17 @@ def setup_environment(colab_drive_dir=COLAB_DRIVE_DIR):
     data_dir = os.environ.get("IMGCLS_DATA_DIR") or None
     output_dir = os.environ.get("IMGCLS_OUTPUT_DIR") or None
 
-    if env == "colab" and colab_drive_dir:
+    if env == "colab" and colab_drive_dir and (data_dir is None or output_dir is None):
         drive_dir = Path(colab_drive_dir)
         if str(drive_dir).startswith("/content/drive") and not Path("/content/drive/MyDrive").is_dir():
             from google.colab import drive  # asks for permission to use your Google Drive
-            drive.mount("/content/drive")
+            try:
+                drive.mount("/content/drive")
+            except Exception as e:
+                raise RuntimeError(
+                    f"Google Drive can't be mounted here ({e}). Set IMGCLS_DATA_DIR to an unpacked copy of "
+                    "imgcls_data.zip and IMGCLS_OUTPUT_DIR to a writable folder before this cell, "
+                    "or run on colab.research.google.com.") from e
         if data_dir is None:
             data_dir = unpack_data_zip(drive_dir / DATA_ZIP_NAME, COLAB_DATA_DEST)
         if output_dir is None:

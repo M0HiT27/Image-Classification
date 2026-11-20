@@ -40,6 +40,8 @@ report (method, accuracy, three most common failure cases), and a 5-minute prese
   finds the attached dataset under `/kaggle/input` and saves to `/kaggle/working/output`. `IMGCLS_DATA_DIR` /
   `IMGCLS_OUTPUT_DIR` override both. The zip is made by `scripts/pack_data.py` (`dist/`, git-ignored; re-run it
   after data changes). Code must stay Python 3.10-compatible for the cloud (no 3.12-only f-strings).
+  Kaggle notebooks run on Colab's image (`google.colab` imports, `/content` exists, but Drive can't be mounted),
+  so `detect()` must check for Kaggle before Colab.
 
 ## Hard rules
 
