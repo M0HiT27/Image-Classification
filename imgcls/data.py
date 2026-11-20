@@ -5,6 +5,7 @@ The validation set is carved out of train (stratified, fixed seed) and is what p
 best epoch, so the test set is only touched once, after training.
 """
 
+import os
 import random
 from collections import Counter
 from dataclasses import dataclass
@@ -161,8 +162,17 @@ def build_data(cfg, classes, data_cfg, data_dir=DATA_DIR):
     val_ds, test_ds = ImageDataset(val, eval_tf), ImageDataset(test, eval_tf)
 
     workers = cfg.get("NUM_WORKERS", 4)
-    common = dict(batch_size=cfg["BATCH_SIZE"], num_workers=workers,
-                  pin_memory=torch.cuda.is_available(), persistent_workers=workers > 0)
+    # On Windows every loader worker is a fresh process that loads all of PyTorch (several GB of
+    # DLLs for the CUDA build). Several pools at once can exhaust memory and hang (WinError 1455),
+    # so only the training loader gets worker processes there; validation/test are small.
+    eval_workers = 0 if os.name == "nt" else workers
+    pin = torch.cuda.is_available()
+    timeout = cfg.get("LOADER_TIMEOUT", 180)
+
+    def make_loader(ds, n, **kw):
+        return DataLoader(ds, batch_size=cfg["BATCH_SIZE"], num_workers=n, pin_memory=pin,
+                          persistent_workers=n > 0, timeout=timeout if n > 0 else 0, **kw)
+
     per_class = cfg.get("SAMPLES_PER_CLASS")
     if per_class:
         # class-balanced sampling: butterfly has ~10x more images than the other classes
@@ -171,11 +181,11 @@ def build_data(cfg, classes, data_cfg, data_dir=DATA_DIR):
         g = torch.Generator().manual_seed(seed)
         sampler = WeightedRandomSampler(weights, num_samples=per_class * len(classes),
                                         replacement=True, generator=g)
-        train_loader = DataLoader(train_ds, sampler=sampler, drop_last=True, **common)
+        train_loader = make_loader(train_ds, workers, sampler=sampler, drop_last=True)
     else:
-        train_loader = DataLoader(train_ds, shuffle=True, drop_last=True, **common)
-    val_loader = DataLoader(val_ds, shuffle=False, **common)
-    test_loader = DataLoader(test_ds, shuffle=False, **common)
+        train_loader = make_loader(train_ds, workers, shuffle=True, drop_last=True)
+    val_loader = make_loader(val_ds, eval_workers, shuffle=False)
+    test_loader = make_loader(test_ds, eval_workers, shuffle=False)
 
     data = Data(classes, train, val, test, train_loader, val_loader, test_loader, mean, std, img_size)
     print(f"{'class':20s} {'train':>6s} {'val':>5s} {'test':>5s}")
@@ -184,4 +194,5 @@ def build_data(cfg, classes, data_cfg, data_dir=DATA_DIR):
     per_epoch = per_class * len(classes) if per_class else len(train)
     print(f"{len(train)} train / {len(val)} val / {len(test)} test images; "
           f"{per_epoch} training samples per epoch ({len(train_loader)} batches)")
+    print(f"image-loading worker processes: train {workers}, validation/test {eval_workers}")
     return data

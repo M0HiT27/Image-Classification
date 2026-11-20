@@ -25,8 +25,14 @@ report (method, accuracy, three most common failure cases), and a 5-minute prese
   download large models without saying so. Never delete cache folders other than ones this project created
   (`models--timm--*`, `models--laion--CLIP-*`); the `docling-*` and `sentence-transformers` entries belong to
   something else.
-- Git: the repo has one commit ("First commit"). Commit or push only when the user asks. `data/`, `output/`,
-  `*.pth`, `.venv/` are ignored.
+- Git: remote `origin` is `github.com/M0HiT27/Image-Classification`. The user pulls it on a second laptop that
+  has an NVIDIA RTX 2050 (4 GB VRAM, Python 3.12, CUDA PyTorch from the `cu132` index). Commit or push only when
+  the user asks. `data/`, `output/`, `*.pth`, `.venv/` are ignored.
+- **Windows + CUDA PyTorch + DataLoader workers:** each worker process loads all of PyTorch, and several pools at
+  once hung the GPU laptop (validation workers never started). `imgcls/data.py` therefore gives worker processes
+  only to the training loader on Windows, and `imgcls/engine.py` falls back to single-process loading when workers
+  time out (`LOADER_TIMEOUT`, default 180 s) or crash. Keep both behaviours; on that laptop `NUM_WORKERS = 2` is
+  the sensible maximum. With 4 GB VRAM, `BATCH_SIZE = 16` may be needed for resnet50 and convnext_tiny.
 
 ## Hard rules
 
@@ -136,7 +142,7 @@ checkpoint becomes incompatible (class count changes).
 | `imgcls/device.py` | `get_device("auto")`: CUDA, then MPS, then CPU, with a warning when a requested GPU is missing |
 | `imgcls/data.py` | `discover_classes`, `scan`, `split_train_val` (stratified), `build_transforms`, `ImageDataset`, `build_data` (balanced `WeightedRandomSampler`) |
 | `imgcls/model.py` | `create_model` (timm, optional linear probe), `load_checkpoint` |
-| `imgcls/engine.py` | `train`: AdamW, warm-up + cosine, AMP on CUDA, saves `best.pth` on val improvement, handles KeyboardInterrupt, writes `config.json`, `history.csv`, `summary.json`, `training_curves.png` |
+| `imgcls/engine.py` | `train`: AdamW, warm-up + cosine, AMP on CUDA, saves `best.pth` on val improvement, handles KeyboardInterrupt, falls back to single-process loading if loader workers hang or crash, writes `config.json`, `history.csv`, `summary.json`, `training_curves.png` |
 | `imgcls/evaluate.py` | `evaluate_run`: test metrics, predictions, top confusions, confusion matrix, misclassified grid |
 | `imgcls/predict.py` | `predict_folder`: deliverable CSV plus a detailed CSV |
 | `scripts/create_notebook.py` | notebook generator: `PRESETS`, `config_fields` (settings cell), `build_notebook` (template) |

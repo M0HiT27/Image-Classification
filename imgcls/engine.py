@@ -20,6 +20,7 @@ import numpy as np
 import timm
 import torch
 from matplotlib.figure import Figure
+from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
 from .config import OUTPUT_DIR
@@ -45,6 +46,15 @@ def new_run_dir(model_name):
     return run_dir
 
 
+_READY_LOADERS = set()  # loaders whose worker processes have already started
+
+
+def _single_process(loader):
+    """Same loader without worker processes (used when the workers hang or crash)."""
+    return DataLoader(loader.dataset, batch_size=loader.batch_size, sampler=loader.sampler,
+                      drop_last=loader.drop_last, num_workers=0, pin_memory=loader.pin_memory)
+
+
 def _run_epoch(model, loader, device, criterion, optimizer=None, scheduler=None, scaler=None,
                linear_probe=False, desc=""):
     training = optimizer is not None
@@ -54,8 +64,17 @@ def _run_epoch(model, loader, device, criterion, optimizer=None, scheduler=None,
         model.get_classifier().train()
     use_amp = device.type == "cuda"
     total_loss, correct, seen = 0.0, 0, 0
+    starting = loader.num_workers > 0 and id(loader) not in _READY_LOADERS
+    if starting:
+        print(f"{desc}: starting {loader.num_workers} image-loading worker processes "
+              "(can take a minute on Windows)...", flush=True)
+    t_start = time.time()
     with torch.set_grad_enabled(training):
-        for x, y in tqdm(loader, desc=desc, leave=False):
+        for x, y in tqdm(loader, desc=desc, leave=training):
+            if starting:
+                print(f"{desc}: workers ready after {time.time() - t_start:.0f}s", flush=True)
+                _READY_LOADERS.add(id(loader))
+                starting = False
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
             with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
                 logits = model(x)
@@ -106,7 +125,26 @@ def train(cfg, model, data, device):
     def lr_factor(step):
         if step < warmup:
             return (step + 1) / warmup
-        return 0.5 * (1 + math.cos(math.pi * (step - warmup) / max(1, total - warmup)))
+        progress = min(1.0, (step - warmup) / max(1, total - warmup))
+        return 0.5 * (1 + math.cos(math.pi * progress))
+
+    def run_phase(attr, desc, **train_args):
+        """Run one pass over data.<attr>; if its worker processes hang or crash, fall back to
+        loading images in this process and redo the pass instead of waiting forever."""
+        loader = getattr(data, attr)
+        try:
+            return _run_epoch(model, loader, device, criterion, linear_probe=linear_probe,
+                              desc=desc, **train_args)
+        except RuntimeError as e:
+            if loader.num_workers == 0 or "DataLoader" not in str(e):
+                raise
+            print(f"WARNING: image-loading workers failed ({e}).\n"
+                  f"Switching this loader to NUM_WORKERS = 0 and redoing '{desc}'. "
+                  "Set NUM_WORKERS = 0 (or 2) in the settings cell to avoid the wait next time.",
+                  flush=True)
+            setattr(data, attr, _single_process(loader))
+            return _run_epoch(model, getattr(data, attr), device, criterion, linear_probe=linear_probe,
+                              desc=desc, **train_args)
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_factor)
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
@@ -130,10 +168,9 @@ def train(cfg, model, data, device):
     try:
         for epoch in range(1, epochs + 1):
             t0 = time.time()
-            tr_loss, tr_acc = _run_epoch(model, data.train_loader, device, criterion, optimizer,
-                                         scheduler, scaler, linear_probe, f"epoch {epoch}/{epochs} train")
-            va_loss, va_acc = _run_epoch(model, data.val_loader, device, criterion,
-                                         desc=f"epoch {epoch}/{epochs} val")
+            tr_loss, tr_acc = run_phase("train_loader", f"epoch {epoch}/{epochs} train",
+                                        optimizer=optimizer, scheduler=scheduler, scaler=scaler)
+            va_loss, va_acc = run_phase("val_loader", f"epoch {epoch}/{epochs} val")
             row = {"epoch": epoch, "train_loss": round(tr_loss, 4), "train_acc": round(tr_acc, 4),
                    "val_loss": round(va_loss, 4), "val_acc": round(va_acc, 4),
                    "lr": optimizer.param_groups[0]["lr"], "seconds": round(time.time() - t0, 1)}

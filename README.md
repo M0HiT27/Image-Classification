@@ -90,7 +90,8 @@ Image Classification/
 
 ## Setup
 
-Tested with **Python 3.14.7** on Windows 11.
+Developed and tested with **Python 3.14.7** on Windows 11. Python 3.11 or newer (64-bit) works too: the code uses
+nothing newer than 3.12 syntax, and PyTorch publishes CUDA builds for 3.11–3.15.
 
 ```bash
 python -m venv .venv
@@ -107,7 +108,8 @@ PowerShell: `.\.venv\Scripts\Activate.ps1`. Git Bash: `source .venv/Scripts/acti
    python -c "import sys, struct; print(sys.version, struct.calcsize('P') * 8, 'bit')"
    ```
 
-2. Check the highest CUDA version your NVIDIA driver supports: the `CUDA Version` at the top right of
+2. Check the highest CUDA version your NVIDIA driver supports: the `CUDA Version` (newer drivers label it
+   `CUDA UMD Version`) at the top right of
 
    ```bash
    nvidia-smi
@@ -206,7 +208,7 @@ Starter notebooks:
 | `SAMPLES_PER_CLASS` | `600` | images drawn per class per epoch (class-balanced, with replacement); `None` = every train image once, unbalanced |
 | `PATIENCE` | `None` | stop after this many epochs without validation improvement |
 | `LIMIT_PER_CLASS` | `None` | use only N images per class (quick smoke tests) |
-| `NUM_WORKERS` | `4` | image-loading processes (set `0` if loader workers cause trouble) |
+| `NUM_WORKERS` | `4` | image-loading processes for training. On Windows, with the CUDA build of PyTorch, use `2` (or `0` if workers hang). Validation/test never use extra processes on Windows |
 | `SEED` | `42` | seed for the splits, sampling and initialisation |
 
 ### What happens during training
@@ -225,6 +227,13 @@ Starter notebooks:
 - **Images:** EXIF rotation applied; transparency flattened onto white; unreadable files are replaced by a grey
   image with a warning instead of crashing.
 - **Optimisation:** AdamW, 1 warm-up epoch (when `EPOCHS > 2`), then cosine decay to zero; cross-entropy with label smoothing.
+- **Image-loading workers:** on Windows each worker is a separate process that loads all of PyTorch (several GB
+  of DLLs for the CUDA build). Starting several pools at once can exhaust memory and hang (`WinError 1455`,
+  "paging file is too small"). So on Windows only the training loader uses `NUM_WORKERS` processes, kept alive
+  across epochs; validation and test load images in the notebook's own process. The train cell prints when workers
+  start and how long they took. If they don't deliver a batch within `LOADER_TIMEOUT` seconds (default 180; add
+  `LOADER_TIMEOUT = 300` to the settings cell to change it) or crash, training prints a warning, switches that
+  loader to single-process loading and redoes the phase instead of hanging.
 - **Checkpointing:** `best.pth` is overwritten whenever validation accuracy improves. **Interrupting the train cell**
   stops training early but keeps `best.pth` and the history.
 
@@ -417,7 +426,9 @@ Attribution is required if the dataset or images are redistributed.
 | Setup cell prints `Using CPU` on a GPU machine | the CPU build of PyTorch is installed; reinstall from the CUDA index (see [Setup](#setup)) |
 | CUDA out of memory | lower `BATCH_SIZE` (e.g. 16) or `IMG_SIZE` |
 | Training is very slow | CPU-only: use `mobilenetv3_large` or `efficientnet_b0`, or `TRAIN_MODE = "linear_probe"`; lower `SAMPLES_PER_CLASS` |
-| DataLoader worker errors / hangs on Windows | set `NUM_WORKERS = 0` |
+| Train cell shows `Run folder: ...` and then nothing; GPU stays at idle power | image-loading workers are starting slowly or hung (Windows + CUDA PyTorch). The code now falls back to single-process loading after `LOADER_TIMEOUT` (180 s); to avoid the wait, set `NUM_WORKERS = 2` or `0` and re-run the settings, Data and Train cells |
+| `WARNING: image-loading workers failed (...)` | the fallback above kicked in; training continues. Lower `NUM_WORKERS` next time |
+| Progress bar disappears at the end of an epoch | the validation bar is removed when validation finishes; the training bar stays, and the epoch summary line follows |
 | `WARNING: no training images yet for [...]` | a class folder is missing from `data/`; the model will have fewer outputs |
 | `checkpoint classes ... differ from the data's ...` | the class folders changed since that run was trained; evaluate it on matching data or retrain |
 | Progress bars show as text | install `ipywidgets` (in requirements) and restart the kernel |
