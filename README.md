@@ -41,17 +41,17 @@ Images live in `data/<class>/train/` and `data/<class>/test/` (70/30 split, fixe
 
 | Folder | Category name in predictions | Train | Test |
 |---|---|---:|---:|
-| `banana` | Banana | 571 | 245 |
+| `banana` | Banana | 571 | 201 |
 | `butterfly` | Butterfly | 6,498 | 2,756 |
 | `golden_retriever` | Golden retriever | 689 | 295 |
 | `labrador_retriever` | Labrador retriever | 754 | 323 |
 | `mushroom` | Mushroom | 825 | 354 |
-| `orange` | Orange | 410 | 176 |
+| `orange` | Orange | 410 | 164 |
 | `pine_cone` | Pine cone | 487 | 208 |
 | `pug` | Pug | 605 | 260 |
 | `siberian_husky` | Siberian husky | 734 | 314 |
 | `sunflower` | Sunflower | 592 | 254 |
-| **total** | | **12,165** | **5,185** |
+| **total** | | **12,165** | **5,129** |
 
 - `test/` is **our own held-out split**, not the hidden test set from the briefing.
 - Butterfly has about 10x more images than the other classes; training samples every class equally (see
@@ -67,8 +67,10 @@ Image Classification/
 │   ├── main.py                 FastAPI app with one endpoint: POST /predict
 │   └── .env.example            settings template (copy to api/.env)
 ├── data/                       cleaned images: data/<class>/{train,test}/   (not in git, only copy)
+├── dist/                       imgcls_data.zip for Colab / Kaggle (made by scripts/pack_data.py; not in git)
 ├── imgcls/                     shared training package used by every notebook
 │   ├── config.py               paths, class list, display names for the predictions file
+│   ├── environment.py          local / Colab / Kaggle detection: where the data and runs live
 │   ├── device.py               GPU-first device selection with CPU fallback
 │   ├── data.py                 class discovery, train/val/test splits, augmentation, loaders
 │   ├── model.py                timm model creation, checkpoint loading
@@ -79,6 +81,7 @@ Image Classification/
 ├── output/                     training runs: output/<model_name>/<timestamp>/   (not in git)
 ├── scripts/
 │   ├── create_notebook.py      creates a new model notebook (the base script)
+│   ├── pack_data.py            zips data/ into dist/imgcls_data.zip for Colab / Kaggle
 │   ├── fetch_openimages.py     data collection: Open Images V7
 │   ├── extract_thudogs.py      data collection: Tsinghua Dogs
 │   ├── fetch_commons.py        data collection: Wikimedia Commons
@@ -151,7 +154,7 @@ pip install -r requirements.txt
 ```
 
 `requirements.txt` lists minimum versions only, so it keeps an already-installed CUDA build of torch and also
-works on other Python versions, Kaggle and Colab.
+works on other Python versions. On Colab and Kaggle nothing needs installing (see [Colab and Kaggle](#colab-and-kaggle)).
 
 The `.venv` on the original development laptop has the **CPU-only** PyTorch build (`2.15.0+cpu`), because that
 machine has no NVIDIA GPU. A CPU build never uses a GPU, even if one is present.
@@ -176,8 +179,8 @@ Notebook sections:
 | Section | What it does |
 |---|---|
 | Settings | all knobs for this model (table below) |
-| Setup | finds the project root, imports `imgcls`, picks the device and prints which one |
-| Model | downloads the pretrained weights (first time only) and adds a 10-class head |
+| Setup | finds the project root (on Colab/Kaggle: clones it from GitHub), finds the data, imports `imgcls`, picks the device and prints which one |
+| Model | downloads the pretrained weights (first time only; nothing with `PRETRAINED = False`) and adds a 10-class head |
 | Data | discovers classes, builds train/val/test splits and loaders, prints counts per class |
 | Train | one line per epoch; saves `best.pth` whenever validation accuracy improves |
 | Evaluate | scores `best.pth` once on the test split; shows the confusion matrix and the worst mistakes |
@@ -192,6 +195,7 @@ Starter notebooks:
 | `resnet50` | `resnet50.a1_in1k` | 5e-4 | classic CNN baseline |
 | `convnext_tiny` | `convnext_tiny.fb_in22k_ft_in1k` | 2e-4 | modern CNN pretrained on ImageNet-22k |
 | `vit_small` | `vit_small_patch16_224.augreg_in21k_ft_in1k` | 1e-4 | vision transformer; keep `IMG_SIZE = 224` |
+| `mobilenetv3_scratch` | `mobilenetv3_large_100.ra_in1k` | 1e-3 | **trained from scratch** (`PRETRAINED = False`, 60 epochs): the "no pretraining" baseline for the report. Run it on a GPU (Colab/Kaggle); on this laptop's CPU it would take 12+ hours |
 
 ### Settings reference
 
@@ -212,7 +216,7 @@ Starter notebooks:
 | `SAMPLES_PER_CLASS` | `600` | images drawn per class per epoch (class-balanced, with replacement); `None` = every train image once, unbalanced |
 | `PATIENCE` | `None` | stop after this many epochs without validation improvement |
 | `LIMIT_PER_CLASS` | `None` | use only N images per class (quick smoke tests) |
-| `NUM_WORKERS` | `4` | image-loading processes for training. On Windows, with the CUDA build of PyTorch, use `2` (or `0` if workers hang). Validation/test never use extra processes on Windows |
+| `NUM_WORKERS` | `4` | image-loading processes for training, lowered automatically to the number of CPU cores (Colab has 2, Kaggle 4). On Windows, with the CUDA build of PyTorch, use `2` (or `0` if workers hang). Validation/test never use extra processes on Windows |
 | `SEED` | `42` | seed for the splits, sampling and initialisation |
 
 ### What happens during training
@@ -303,6 +307,64 @@ python scripts/create_notebook.py convnext_tiny_lp --arch convnext_tiny.fb_in22k
 - To change what *every* notebook does, edit `imgcls/` (picked up immediately) rather than the notebooks. Changing
   the notebook template itself only affects notebooks generated afterwards (regenerate with `--force`, which
   discards manual edits).
+
+## Colab and Kaggle
+
+The same notebooks run on this machine (CPU or GPU), on Google Colab and on Kaggle, with no edits. The setup cell
+works out where it is running:
+
+| | Code | Data | Runs are saved to |
+|---|---|---|---|
+| Local | this folder | `data/` | `output/` |
+| Colab | cloned from GitHub to `/content/Image-Classification` | `imgcls_data.zip` from Google Drive, unpacked to the VM's disk (`/content/imgcls_data`) | Google Drive: `MyDrive/imgcls/output/` |
+| Kaggle | cloned from GitHub to `/tmp/Image-Classification` | the dataset attached with *Add Input* (found under `/kaggle/input`) | `/kaggle/working/output/` (the notebook's Output) |
+
+The code is cloned from GitHub `main`, so **push your changes before running in the cloud**. Notebooks generated
+before this setup existed still run locally, but only regenerated ones (`--force`, which discards edits) have the
+cloud setup cell. `IMGCLS_DATA_DIR` / `IMGCLS_OUTPUT_DIR` environment variables override the folders anywhere.
+
+### 1. Pack the data (once, on this laptop)
+
+```bash
+python scripts/pack_data.py
+```
+
+This writes `dist/imgcls_data.zip` (1.4 GB, 17,294 images; git-ignored) and checks every entry. It only reads
+`data/`. Re-run it whenever images are added or removed.
+
+### 2a. Google Colab
+
+1. In Google Drive create the folder `MyDrive/imgcls/` and upload `dist/imgcls_data.zip` into it.
+2. Open the notebook straight from GitHub, e.g.
+   `https://colab.research.google.com/github/M0HiT27/Image-Classification/blob/main/notebooks/mobilenetv3_scratch.ipynb`
+   (or File > Open notebook > GitHub).
+3. Runtime > Change runtime type > **T4 GPU**.
+4. Run all, and allow Google Drive access when asked. The first run copies and unpacks the zip (a minute or two).
+5. Results appear in Drive under `MyDrive/imgcls/output/<model>/<timestamp>/`. `best.pth` is written there after
+   every improving epoch, so a disconnect only loses the epochs since then.
+
+Free Colab disconnects idle sessions and caps sessions at about 12 hours; keep the tab open. It has 2 CPU cores,
+so `NUM_WORKERS` is lowered to 2 automatically and image loading may limit the speed. To use another Drive folder,
+change `colab_drive_dir` in the setup cell.
+
+### 2b. Kaggle
+
+1. Datasets > New Dataset > upload `dist/imgcls_data.zip` (Kaggle unpacks it). Keep it **private**: the images
+   come with the licences listed under [Licensing](#licensing).
+2. Create a notebook and import ours: File > Import Notebook (upload the `.ipynb` from `notebooks/` or give its
+   GitHub link).
+3. In the side panel: *Add Input* > your dataset. Under Settings: Accelerator **GPU T4 x2** (the code uses one
+   GPU) and **Internet on** (needed to clone the code and download pretrained weights; Kaggle asks for phone
+   verification once).
+4. Run the first cells to check the setup output, then use **Save Version > Save & Run All** for the full run: it
+   runs in the background (up to 12 hours) without the browser open.
+5. Results: the version's Output tab, under `output/<model>/<timestamp>/`.
+
+### 3. Afterwards
+
+Download the run folder and put it in `output/<model>/<timestamp>/` here, so it sits next to the local runs.
+`best.pth` loads on CPU as well, so the hidden test set can be predicted on this laptop
+([below](#predicting-the-hidden-test-set)).
 
 ## Predicting the hidden test set
 
@@ -506,11 +568,15 @@ Attribution is required if the dataset or images are redistributed.
 | `checkpoint classes ... differ from the data's ...` | the class folders changed since that run was trained; evaluate it on matching data or retrain |
 | Progress bars show as text | install `ipywidgets` (in requirements) and restart the kernel |
 | C: drive filling up | move the Hugging Face cache with `HF_HOME` ([details](#where-pretrained-weights-are-stored)); delete old `output/` runs |
+| Colab: `imgcls_data.zip not found` | upload `dist/imgcls_data.zip` to `MyDrive/imgcls/` (or change `colab_drive_dir`) |
+| Kaggle: `No dataset with <class>/train folders under /kaggle/input` | attach the dataset with *Add Input* |
+| Kaggle: `git clone` fails | turn **Internet on** in the notebook's Settings |
+| `module 'imgcls' has no attribute 'setup_environment'` | the code on GitHub is older than the notebook: push, then rerun the setup cell (it pulls) |
 | `apply_screening.py` prints `SKIPPED: ... source files are gone` | intended: the staging folders were deleted, and rebuilding would wipe `data/<class>`. Don't use `--allow-missing` |
 
 ## Known limitations
 
-- **Orange (586 images) and pine cone (695) are the smallest classes.**
+- **Orange (574 images) and pine cone (695) are the smallest classes.**
 - **The cleaning was automatic** (CLIP), spot-checked with image grids but not reviewed image by image; a few
   wrong images remain (e.g. orange-coloured objects, jam jars among pine cones).
 - **The model always answers with one of the 10 classes**, even for unrelated images.

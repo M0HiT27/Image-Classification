@@ -5,10 +5,12 @@ import os
 # Windows without Developer Mode can't create symlinks; the model cache still works, so skip the warning
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
-from .config import DATA_DIR, DISPLAY_NAMES, EXPECTED_CLASSES, OUTPUT_DIR, ROOT
+from . import config
+from .config import DISPLAY_NAMES, EXPECTED_CLASSES, ROOT
 from .data import build_data, discover_classes
 from .device import get_device
 from .engine import config_from_globals, set_seed, train
+from .environment import setup_environment, use_paths
 from .evaluate import evaluate_run
 from .model import create_model, load_checkpoint
 from .predict import predict_folder
@@ -16,5 +18,12 @@ from .predict import predict_folder
 __all__ = [
     "ROOT", "DATA_DIR", "OUTPUT_DIR", "DISPLAY_NAMES", "EXPECTED_CLASSES",
     "build_data", "discover_classes", "get_device", "config_from_globals", "set_seed", "train",
-    "evaluate_run", "create_model", "load_checkpoint", "predict_folder",
+    "evaluate_run", "create_model", "load_checkpoint", "predict_folder", "setup_environment", "use_paths",
 ]
+
+
+def __getattr__(name):
+    # DATA_DIR and OUTPUT_DIR can change after import (setup_environment / use_paths), so read them live
+    if name in ("DATA_DIR", "OUTPUT_DIR"):
+        return getattr(config, name)
+    raise AttributeError(f"module 'imgcls' has no attribute {name!r}")

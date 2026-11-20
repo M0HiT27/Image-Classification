@@ -1,10 +1,19 @@
 """Project-wide paths and the class list from the task briefing."""
 
+import os
 from pathlib import Path
 
+
+def _path_from_env(name, default):
+    value = os.environ.get(name, "").strip()
+    return Path(value).expanduser().resolve() if value else default
+
+
 ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = ROOT / "data"          # data/<class>/train and data/<class>/test
-OUTPUT_DIR = ROOT / "output"      # output/<model_name>/<timestamp>/
+# Both can be moved with environment variables, or with imgcls.setup_environment() / imgcls.use_paths()
+# (Colab and Kaggle keep the data and the runs outside the code folder).
+DATA_DIR = _path_from_env("IMGCLS_DATA_DIR", ROOT / "data")        # <class>/train and <class>/test
+OUTPUT_DIR = _path_from_env("IMGCLS_OUTPUT_DIR", ROOT / "output")  # <model_name>/<timestamp>/
 
 # Category 2 "Natural objects" from the briefing (folder name -> name used in the predictions file)
 DISPLAY_NAMES = {

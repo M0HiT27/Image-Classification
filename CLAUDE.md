@@ -33,6 +33,13 @@ report (method, accuracy, three most common failure cases), and a 5-minute prese
   only to the training loader on Windows, and `imgcls/engine.py` falls back to single-process loading when workers
   time out (`LOADER_TIMEOUT`, default 180 s) or crash. Keep both behaviours; on that laptop `NUM_WORKERS = 2` is
   the sensible maximum. With 4 GB VRAM, `BATCH_SIZE = 16` may be needed for resnet50 and convnext_tiny.
+- **Google Colab and Kaggle** run the same notebooks (README > "Colab and Kaggle"). The setup cell clones the
+  public GitHub repo when it isn't inside the project, so cloud runs use the **pushed** `main`, not local edits.
+  `imgcls.setup_environment()` (`imgcls/environment.py`) picks the folders: Colab unpacks
+  `MyDrive/imgcls/imgcls_data.zip` to `/content/imgcls_data` and saves runs to `MyDrive/imgcls/output`; Kaggle
+  finds the attached dataset under `/kaggle/input` and saves to `/kaggle/working/output`. `IMGCLS_DATA_DIR` /
+  `IMGCLS_OUTPUT_DIR` override both. The zip is made by `scripts/pack_data.py` (`dist/`, git-ignored; re-run it
+  after data changes). Code must stay Python 3.10-compatible for the cloud (no 3.12-only f-strings).
 
 ## Hard rules
 
@@ -47,9 +54,10 @@ report (method, accuracy, three most common failure cases), and a 5-minute prese
 4. **Put shared logic in `imgcls/`, not in notebooks.** Notebooks stay thin and are generated from the template.
    Create new model notebooks with `scripts/create_notebook.py`; never copy a notebook by hand.
    Use `--force` only when the user asks: it discards their edits.
-5. **Keep the `imgcls` API used by the notebook template stable:** `set_seed`, `get_device`,
-   `discover_classes`, `create_model`, `config_from_globals`, `build_data`, `train`, `evaluate_run`,
-   `predict_folder`, `OUTPUT_DIR`. If one must change, update the template in `scripts/create_notebook.py` and
+5. **Keep the `imgcls` API used by the notebook template stable:** `setup_environment`, `set_seed`,
+   `get_device`, `discover_classes`, `create_model`, `config_from_globals`, `build_data`, `train`,
+   `evaluate_run`, `predict_folder`, `OUTPUT_DIR`. `DATA_DIR` / `OUTPUT_DIR` can change at run time
+   (`setup_environment`, `use_paths`), so read them as `config.DATA_DIR` inside `imgcls/`, never as default arguments. If one must change, update the template in `scripts/create_notebook.py` and
    tell the user that existing notebooks need regenerating.
 6. **Don't delete runs in `output/`** unless the user asks; each holds a `best.pth` that may be their best model.
 7. **The user reviews images by hand and deletes bad ones.** Treat files that disappear as deliberate rejections;
@@ -92,7 +100,7 @@ Generate a throwaway notebook with tiny settings, execute it headless, check the
 
 Read `output/*/*/summary.json`: `best_val_acc`, `test_accuracy`, `test_balanced_accuracy`, `test_macro_f1`,
 `best_epoch`, `minutes`. Per-class detail is in `test_metrics.json`. Prefer balanced accuracy and macro F1 when
-comparing, since butterfly dominates the test split (2,756 of 5,185 images).
+comparing, since butterfly dominates the test split (2,756 of 5,129 images).
 
 ### Produce the hidden-test predictions
 
@@ -147,7 +155,8 @@ checkpoint becomes incompatible (class count changes).
 
 | Path | Purpose |
 |---|---|
-| `imgcls/config.py` | `ROOT`, `DATA_DIR`, `OUTPUT_DIR`, `DISPLAY_NAMES`, `EXPECTED_CLASSES` |
+| `imgcls/config.py` | `ROOT`, `DATA_DIR`, `OUTPUT_DIR` (env `IMGCLS_DATA_DIR` / `IMGCLS_OUTPUT_DIR`), `DISPLAY_NAMES`, `EXPECTED_CLASSES` |
+| `imgcls/environment.py` | `setup_environment` (local / Colab / Kaggle data and output folders), `use_paths`, `find_data_dir`, `unpack_data_zip` |
 | `imgcls/device.py` | `get_device("auto")`: CUDA, then MPS, then CPU, with a warning when a requested GPU is missing |
 | `imgcls/data.py` | `discover_classes`, `scan`, `split_train_val` (stratified), `build_transforms`, `ImageDataset`, `build_data` (balanced `WeightedRandomSampler`) |
 | `imgcls/model.py` | `create_model` (timm, optional linear probe), `load_checkpoint` |
@@ -155,7 +164,8 @@ checkpoint becomes incompatible (class count changes).
 | `imgcls/evaluate.py` | `evaluate_run`: test metrics, predictions, top confusions, confusion matrix, misclassified grid |
 | `imgcls/predict.py` | `predict_folder`: deliverable CSV plus a detailed CSV |
 | `api/main.py` | FastAPI app, single endpoint `POST /predict`. Settings from env (`IMGCLS_CHECKPOINT`, `IMGCLS_MODEL`, `IMGCLS_DEVICE`, `IMGCLS_TOP_K`; template `api/.env.example`). With a checkpoint: our 10 categories. Without: the pretrained ImageNet model, with `IMAGENET_TO_CATEGORY` mapping ImageNet synsets to our categories (ImageNet-1k has no sunflower or pine cone) |
-| `scripts/create_notebook.py` | notebook generator: `PRESETS`, `config_fields` (settings cell), `build_notebook` (template) |
+| `scripts/create_notebook.py` | notebook generator: `PRESETS`, `REPO_URL` (cloned on Colab/Kaggle), `config_fields` (settings cell), `build_notebook` (template) |
+| `scripts/pack_data.py` | zips `data/` (read-only) into `dist/imgcls_data.zip` for Colab / Kaggle |
 | `scripts/fetch_openimages.py`, `extract_thudogs.py`, `fetch_commons.py` | data collection, kept as documentation; their outputs were deleted |
 | `scripts/screen_images.py`, `screen_pinecone_art.py`, `apply_screening.py` | data cleaning; thresholds are explained in comments in `apply_screening.py` |
 | `scripts/split_dataset.py` | legacy de-duplicating splitter for a single folder |

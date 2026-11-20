@@ -23,7 +23,7 @@ from matplotlib.figure import Figure
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-from .config import OUTPUT_DIR
+from . import config
 
 
 def set_seed(seed=42):
@@ -41,7 +41,7 @@ def config_from_globals(namespace):
 
 
 def new_run_dir(model_name):
-    run_dir = OUTPUT_DIR / model_name / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    run_dir = config.OUTPUT_DIR / model_name / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     run_dir.mkdir(parents=True, exist_ok=False)
     return run_dir
 

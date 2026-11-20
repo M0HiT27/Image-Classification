@@ -13,6 +13,8 @@ raw_data/
 new_data/
 rejected/
 _downloads/
+# imgcls_data.zip for Colab / Kaggle (scripts/pack_data.py)
+dist/
 
 # training runs: checkpoints, plots, predictions
 output/

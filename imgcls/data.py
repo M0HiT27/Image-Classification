@@ -16,10 +16,18 @@ from PIL import Image, ImageFile, ImageOps
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torchvision.transforms import v2 as T
 
-from .config import DATA_DIR, EXPECTED_CLASSES
+from . import config
+from .config import EXPECTED_CLASSES
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".gif", ".tif", ".tiff"}
+
+
+def available_cpus():
+    """CPU cores this process may use (Colab gives 2, Kaggle 4)."""
+    if hasattr(os, "sched_getaffinity"):
+        return len(os.sched_getaffinity(0))
+    return os.cpu_count() or 1
 
 
 def list_images(folder, recursive=False):
@@ -41,8 +49,12 @@ def load_rgb(path):
         return im.convert("RGB")
 
 
-def discover_classes(data_dir=DATA_DIR):
-    classes = sorted(d.name for d in Path(data_dir).iterdir()
+def discover_classes(data_dir=None):
+    data_dir = Path(data_dir or config.DATA_DIR)
+    if not data_dir.is_dir():
+        raise FileNotFoundError(f"Data folder not found: {data_dir}. On Colab or Kaggle run "
+                                "imgcls.setup_environment() first (README > Colab and Kaggle).")
+    classes = sorted(d.name for d in data_dir.iterdir()
                      if d.is_dir() and list_images(d / "train"))
     missing = [c for c in EXPECTED_CLASSES if c not in classes]
     if missing:
@@ -51,10 +63,11 @@ def discover_classes(data_dir=DATA_DIR):
     return classes
 
 
-def scan(split, classes, data_dir=DATA_DIR, limit_per_class=None, seed=42):
+def scan(split, classes, data_dir=None, limit_per_class=None, seed=42):
+    data_dir = Path(data_dir or config.DATA_DIR)
     samples = []
     for idx, cls in enumerate(classes):
-        files = list_images(Path(data_dir) / cls / split)
+        files = list_images(data_dir / cls / split)
         if limit_per_class:
             random.Random(seed).shuffle(files)
             files = sorted(files[:limit_per_class])
@@ -142,7 +155,7 @@ class Data:
         return rows
 
 
-def build_data(cfg, classes, data_cfg, data_dir=DATA_DIR):
+def build_data(cfg, classes, data_cfg, data_dir=None):
     """cfg: the notebook's config dict. data_cfg: timm's normalisation settings for the model."""
     seed = cfg.get("SEED", 42)
     mean, std = tuple(data_cfg["mean"]), tuple(data_cfg["std"])
@@ -161,7 +174,10 @@ def build_data(cfg, classes, data_cfg, data_dir=DATA_DIR):
     eval_tf = build_transforms(img_size, mean, std, train=False)
     val_ds, test_ds = ImageDataset(val, eval_tf), ImageDataset(test, eval_tf)
 
-    workers = cfg.get("NUM_WORKERS", 4)
+    requested = cfg.get("NUM_WORKERS", 4) or 0
+    workers = min(requested, available_cpus())  # more workers than cores only adds overhead
+    if workers < requested:
+        print(f"NUM_WORKERS = {requested} lowered to {workers}: this machine has {available_cpus()} CPU cores")
     # On Windows every loader worker is a fresh process that loads all of PyTorch (several GB of
     # DLLs for the CUDA build). Several pools at once can exhaust memory and hang (WinError 1455),
     # so only the training loader gets worker processes there; validation/test are small.
