@@ -42,6 +42,9 @@ PRESETS = {
     "vit_small": {"arch": "vit_small_patch16_224.augreg_in21k_ft_in1k", "lr": 1e-4,
                   "note": "vision transformer; IMG_SIZE must stay 224"},
 }
+# Not presets (they change more than the learning rate); recreate them with:
+#   python scripts/create_notebook.py mobilenetv3_scratch --arch mobilenetv3_large_100.ra_in1k --lr 1e-3 --epochs 60 --set PRETRAINED=False --set NUM_WORKERS=4
+#   python scripts/create_notebook.py resnet18_scratch --arch resnet18 --lr 1e-3 --epochs 150 --batch-size 64 --set PRETRAINED=False --set GRAD_CLIP=1.0 --set NUM_WORKERS=4
 
 
 def config_fields(name, arch, lr, img_size, epochs, batch_size):
@@ -56,6 +59,7 @@ def config_fields(name, arch, lr, img_size, epochs, batch_size):
         ("LR", lr, "peak learning rate (AdamW, cosine schedule, 1 warm-up epoch)"),
         ("WEIGHT_DECAY", 0.05, ""),
         ("LABEL_SMOOTHING", 0.1, ""),
+        ("GRAD_CLIP", None, "max gradient norm, e.g. 1.0: prevents sudden collapses when training from scratch; None = off"),
         ("TRAIN_MODE", "finetune", '"finetune" = all layers; "linear_probe" = classifier only (much faster on CPU)'),
         ("VAL_FRACTION", 0.10, "share of train held out to pick the best epoch; test is only used at the end"),
         ("SAMPLES_PER_CLASS", 600, "class-balanced samples per epoch (butterfly has ~10x more images); None = every image once"),

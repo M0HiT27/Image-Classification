@@ -196,6 +196,7 @@ Starter notebooks:
 | `convnext_tiny` | `convnext_tiny.fb_in22k_ft_in1k` | 2e-4 | modern CNN pretrained on ImageNet-22k |
 | `vit_small` | `vit_small_patch16_224.augreg_in21k_ft_in1k` | 1e-4 | vision transformer; keep `IMG_SIZE = 224` |
 | `mobilenetv3_scratch` | `mobilenetv3_large_100.ra_in1k` | 1e-3 | **trained from scratch** (`PRETRAINED = False`, 60 epochs): the "no pretraining" baseline for the report. Run it on a GPU (Colab/Kaggle); on this laptop's CPU it would take 12+ hours |
+| `resnet18_scratch` | `resnet18` | 1e-3 | **trained from scratch**, the stronger attempt: ResNet-18 (easier to train from random weights), 150 epochs, `BATCH_SIZE = 64`, `GRAD_CLIP = 1.0`. About 80 min on a Kaggle T4 if epochs take ~32 s as in the MobileNetV3 run |
 
 ### Settings reference
 
@@ -211,6 +212,7 @@ Starter notebooks:
 | `LR` | preset | peak learning rate (AdamW) |
 | `WEIGHT_DECAY` | `0.05` | AdamW weight decay |
 | `LABEL_SMOOTHING` | `0.1` | cross-entropy label smoothing |
+| `GRAD_CLIP` | `None` | maximum gradient norm, e.g. `1.0`. Caps the size of each update, which prevents the sudden collapses seen when training from scratch. `None` = off (missing in older notebooks, which means off) |
 | `TRAIN_MODE` | `"finetune"` | `"finetune"` trains every layer; `"linear_probe"` freezes the backbone and trains only the classifier (much faster on CPU, usually a little less accurate) |
 | `VAL_FRACTION` | `0.10` | share of each class's train images held out to choose the best epoch |
 | `SAMPLES_PER_CLASS` | `600` | images drawn per class per epoch (class-balanced, with replacement); `None` = every train image once, unbalanced |
@@ -553,6 +555,21 @@ Attribution is required if the dataset or images are redistributed.
   cost in screening accuracy. MobileCLIP2-S2 was not faster on this CPU.
 - **Automatic pruning has a bias:** it also removes hard-but-valid images (pale golden retrievers, unusual
   sunflowers), which makes our own test split somewhat easier than real-world images.
+- **Training from scratch is far worse than fine-tuning.** Same architecture (MobileNetV3-Large), same data, same
+  test split (5,129 images):
+
+  | | Fine-tuned from ImageNet | From scratch |
+  |---|---|---|
+  | Test accuracy | 98.7% | 83.8% |
+  | Test balanced accuracy | 97.8% | 79.3% |
+  | Test macro F1 | 97.7% | 75.8% |
+  | Epochs (best) | 10 (8) | 60 (55) |
+  | Training time | 12 min, RTX 2050 | 36 min, Kaggle T4 |
+
+  From scratch it reached 50% validation accuracy only at epoch 7 (fine-tuned: 93% after epoch 1), collapsed once
+  (epochs 21-22: 74% → 53%, about 8 epochs lost) and was still underfitting when the learning rate reached zero.
+  `GRAD_CLIP` was added afterwards to prevent such collapses; `resnet18_scratch` (ResNet-18, 150 epochs, clipping)
+  is the stronger from-scratch attempt.
 
 ## Troubleshooting
 

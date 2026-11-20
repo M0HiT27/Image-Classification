@@ -162,7 +162,7 @@ checkpoint becomes incompatible (class count changes).
 | `imgcls/device.py` | `get_device("auto")`: CUDA, then MPS, then CPU, with a warning when a requested GPU is missing |
 | `imgcls/data.py` | `discover_classes`, `scan`, `split_train_val` (stratified), `build_transforms`, `ImageDataset`, `build_data` (balanced `WeightedRandomSampler`) |
 | `imgcls/model.py` | `create_model` (timm, optional linear probe), `load_checkpoint` |
-| `imgcls/engine.py` | `train`: AdamW, warm-up + cosine, AMP on CUDA, saves `best.pth` on val improvement, handles KeyboardInterrupt, falls back to single-process loading if loader workers hang or crash, writes `config.json`, `history.csv`, `summary.json`, `training_curves.png` |
+| `imgcls/engine.py` | `train`: AdamW, warm-up + cosine, AMP on CUDA, optional `GRAD_CLIP` (unscale, then clip), saves `best.pth` on val improvement, handles KeyboardInterrupt, falls back to single-process loading if loader workers hang or crash, writes `config.json`, `history.csv`, `summary.json`, `training_curves.png` |
 | `imgcls/evaluate.py` | `evaluate_run`: test metrics, predictions, top confusions, confusion matrix, misclassified grid |
 | `imgcls/predict.py` | `predict_folder`: deliverable CSV plus a detailed CSV |
 | `api/main.py` | FastAPI app, single endpoint `POST /predict`. Settings from env (`IMGCLS_CHECKPOINT`, `IMGCLS_MODEL`, `IMGCLS_DEVICE`, `IMGCLS_TOP_K`; template `api/.env.example`). With a checkpoint: our 10 categories. Without: the pretrained ImageNet model, with `IMAGENET_TO_CATEGORY` mapping ImageNet synsets to our categories (ImageNet-1k has no sunflower or pine cone) |

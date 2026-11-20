@@ -56,7 +56,7 @@ def _single_process(loader):
 
 
 def _run_epoch(model, loader, device, criterion, optimizer=None, scheduler=None, scaler=None,
-               linear_probe=False, desc=""):
+               linear_probe=False, desc="", grad_clip=None):
     training = optimizer is not None
     model.train(training)
     if training and linear_probe:  # frozen backbone: keep its batch-norm statistics fixed
@@ -82,6 +82,10 @@ def _run_epoch(model, loader, device, criterion, optimizer=None, scheduler=None,
             if training:
                 optimizer.zero_grad(set_to_none=True)
                 scaler.scale(loss).backward()
+                if grad_clip:  # cap the update size; stops sudden collapses when training from scratch
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(
+                        [p for g in optimizer.param_groups for p in g["params"]], grad_clip)
                 scaler.step(optimizer)
                 scaler.update()
                 scheduler.step()
@@ -107,6 +111,8 @@ def _plot_history(history, path):
 
 def train(cfg, model, data, device):
     """Train with AdamW + cosine schedule; keep the checkpoint of the best validation epoch.
+
+    Optional cfg["GRAD_CLIP"]: maximum gradient norm (e.g. 1.0); None = no clipping.
 
     Stopping the cell (KeyboardInterrupt) ends training early but keeps best.pth and the history.
     Returns the run folder.
@@ -169,7 +175,8 @@ def train(cfg, model, data, device):
         for epoch in range(1, epochs + 1):
             t0 = time.time()
             tr_loss, tr_acc = run_phase("train_loader", f"epoch {epoch}/{epochs} train",
-                                        optimizer=optimizer, scheduler=scheduler, scaler=scaler)
+                                        optimizer=optimizer, scheduler=scheduler, scaler=scaler,
+                                        grad_clip=cfg.get("GRAD_CLIP"))
             va_loss, va_acc = run_phase("val_loader", f"epoch {epoch}/{epochs} val")
             row = {"epoch": epoch, "train_loss": round(tr_loss, 4), "train_acc": round(tr_acc, 4),
                    "val_loss": round(va_loss, 4), "val_acc": round(va_acc, 4),
