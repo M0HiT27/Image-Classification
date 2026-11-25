@@ -110,11 +110,18 @@ def evaluate_run(run_dir, object_dir, device, split="test", img_size=640, batch=
                       project=str(run_dir), name=split, exist_ok=True, plots=True, verbose=False)
     items = read_split(object_dir, split)
     preds = {}
-    results = model.predict(source=[str(p) for p, _, _ in items], imgsz=img_size, conf=0.001, iou=0.7,
-                            max_det=100, device=device_arg(device), stream=True, verbose=False)
-    for (path, _, _), r in zip(items, results):
-        b = r.boxes
-        preds[str(path)] = (b.xyxyn.cpu().numpy(), b.conf.cpu().numpy(), b.cls.cpu().numpy().astype(int))
+    step = batch if batch and batch > 0 else 16
+    # Ultralytics loads a list of paths into memory and runs it as ONE batch (all 1,463 test photos = 9 GB of
+    # GPU memory), so hand it `step` photos at a time. rect=False pads every photo to the full square; with
+    # predict's default (rect=True) a chunk whose photos share one shape gets less padding, so the score would
+    # depend on the batch size.
+    for start in range(0, len(items), step):
+        chunk = items[start:start + step]
+        results = model.predict(source=[str(p) for p, _, _ in chunk], imgsz=img_size, conf=0.001, iou=0.7,
+                                max_det=100, rect=False, device=device_arg(device), verbose=False)
+        for (path, _, _), r in zip(chunk, results):
+            b = r.boxes
+            preds[str(path)] = (b.xyxyn.cpu().numpy(), b.conf.cpu().numpy(), b.cls.cpu().numpy().astype(int))
     ours = mean_average_precision(preds, ground_truth(items), len(CLASSES))
     table = pd.DataFrame(ours["per_class"], index=[config.DISPLAY_NAMES[c] for c in CLASSES])
     table = table.rename(columns={"gt": "boxes"})[["boxes", "ap50", "ap50_95"]].round(3)

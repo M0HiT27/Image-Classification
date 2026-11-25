@@ -16,6 +16,11 @@ _downloads/
 # imgcls_data.zip for Colab / Kaggle (scripts/pack_data.py)
 dist/
 
+# detection dataset made by object_detection_notebooks/01_build_data_object.ipynb (rebuildable from data/;
+# its _cache/ holds the downloaded Open Images boxes and the OWLv2 results)
+data_object/
+data_object.zip
+
 # training runs: checkpoints, plots, predictions
 output/
 *.pth
@@ -33,3 +38,6 @@ output/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# detector model files for the video API (imgcls/detect.py; IMGCLS_DETECTOR_CACHE overrides)
+model_cache/

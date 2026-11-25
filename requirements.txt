@@ -28,6 +28,14 @@ nbconvert>=7.0             # [7.17.2]
 fastapi>=0.110             # [0.165.0]
 uvicorn[standard]>=0.29    # [0.54.0]  (includes python-dotenv for --env-file)
 python-multipart>=0.0.9    # [0.0.34]  (file uploads)
+transformers>=4.45         # [5.24.0]  (/detect-video: ready-made OWLv2 / OWL-ViT detector, imgcls/detect.py)
+opencv-python-headless>=4.8  # [5.1.0.95]  (/detect-video: reading video files; includes FFmpeg)
+
+# object detection notebooks (object_detection_notebooks/, imgcls/objdet/); YOLO only, AGPL-3.0.
+# Installed here with --no-deps because it requires opencv-python, which clashes with the headless build above:
+#   pip install --no-deps ultralytics ultralytics-thop && pip install polars
+# ultralytics>=8.4          # [8.4.218]  (YOLO26)
+# polars>=0.20              # [1.x]
 
 # data collection and cleaning (scripts/)
 open_clip_torch>=2.24      # [4.2.2]

@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Natural Objects Classifier</title>
+<!-- Served by the API at http://127.0.0.1:8000/ (api/main.py). Sends each image to POST /predict. -->
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #1c2230; --muted: #5d6878; --border: #dce1e8;
+    --accent: #2d6cdf; --accent-soft: #e3ebfb; --warn: #9a6700; --error: #b42318; --error-soft: #fdecea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #13161b; --card: #1c2027; --text: #e5e8ed; --muted: #98a2b0; --border: #2d333d;
+      --accent: #6d9ef2; --accent-soft: #23314b; --warn: #e3b341; --error: #f97066; --error-soft: #3b1f1f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .tabs { display: flex; gap: 4px; margin: 0 0 18px; border-bottom: 1px solid var(--border); }
+  .tabs button { border: 0; background: none; font: inherit; color: var(--muted); padding: 8px 14px; cursor: pointer;
+                 border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  .drop { border: 2px dashed var(--border); border-radius: 12px; background: var(--card); padding: 36px 16px;
+          text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+  .drop:hover, .drop:focus-visible, .drop.over { border-color: var(--accent); background: var(--accent-soft); outline: none; }
+  .drop strong { color: var(--accent); }
+  .drop small { display: block; color: var(--muted); margin-top: 6px; }
+  .controls { margin-top: 10px; color: var(--muted); font-size: .9rem; }
+  select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--border);
+           border-radius: 6px; padding: 2px 6px; }
+  .player { position: relative; margin-top: 12px; background: #000; border-radius: 12px; overflow: hidden; }
+  .player video { display: block; width: 100%; max-height: 65vh; }
+  .player canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .trow { display: grid; grid-template-columns: minmax(0, 11em) 1fr; gap: 2px 12px; align-items: center; margin: 12px 0; }
+  .tname { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: .9rem;
+           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .tl { position: relative; height: 14px; background: var(--accent-soft); border-radius: 4px; cursor: pointer; }
+  .seg { position: absolute; top: 0; bottom: 0; min-width: 4px; border: 0; border-radius: 3px; padding: 0; cursor: pointer; }
+  .head { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); pointer-events: none; }
+  .tinfo { grid-column: 2; color: var(--muted); font-size: .8rem; }
+  #vresult { margin-top: 4px; }
+  .bar { display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+         margin: 14px 0 4px; min-height: 1.5em; color: var(--muted); font-size: .9rem; }
+  #clear { border: 0; background: none; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
+  .card { display: flex; gap: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+          padding: 14px; margin-top: 12px; }
+  .thumb { width: 132px; height: 132px; object-fit: cover; border-radius: 8px; flex: none; background: var(--border); }
+  .noimg { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: .8rem; }
+  .info { flex: 1; min-width: 0; }
+  .file { color: var(--muted); font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .top { font-size: 1.3rem; font-weight: 600; margin: 2px 0 8px; }
+  .pct { color: var(--accent); margin-left: 8px; }
+  .note { color: var(--muted); font-size: .85rem; margin: -4px 0 8px; }
+  .note.warn { color: var(--warn); }
+  .row { display: grid; grid-template-columns: minmax(0, 12em) 1fr 3.8em; gap: 10px; align-items: center;
+         font-size: .9rem; margin: 4px 0; }
+  .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .track { height: 8px; background: var(--accent-soft); border-radius: 4px; overflow: hidden; }
+  .fill { height: 100%; background: var(--accent); border-radius: 4px; }
+  .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .time { color: var(--muted); font-size: .8rem; margin-top: 6px; }
+  .wait { color: var(--muted); }
+  .error { color: var(--error); background: var(--error-soft); border-radius: 8px; padding: 8px 10px; font-size: .9rem; }
+  footer { margin-top: 28px; color: var(--muted); font-size: .85rem; }
+  a { color: var(--accent); }
+  code { font-size: .9em; }
+  @media (max-width: 520px) {
+    .card { flex-direction: column; }
+    .thumb { width: 100%; height: 220px; }
+    .noimg { height: 48px; }
+    .row { grid-template-columns: minmax(0, 9em) 1fr 3.8em; }
+    .trow { grid-template-columns: minmax(0, 8em) 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Natural objects classifier</h1>
+  <nav class="tabs" role="tablist">
+    <button type="button" role="tab" id="tab-images" aria-selected="true" aria-controls="panel-images">Images</button>
+    <button type="button" role="tab" id="tab-video" aria-selected="false" aria-controls="panel-video">Video</button>
+  </nav>
+
+  <section id="panel-images" role="tabpanel" aria-labelledby="tab-images">
+    <p class="sub">Upload photos; the model says which of the 10 categories each one shows.</p>
+    <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose images to classify">
+      <strong>Choose images</strong> or drop them here
+      <small>JPG, PNG, WebP, ... up to 20 MB each. Pasting an image (Ctrl+V) works too.</small>
+    </div>
+    <input id="picker" type="file" accept="image/*" multiple hidden>
+
+    <div class="bar"><span id="status">Model details appear after the first prediction.</span>
+      <button id="clear" type="button" hidden>Clear results</button></div>
+    <div id="results"></div>
+    <footer>Each image is sent to <code>POST /predict</code> on this server &middot; <a href="docs">API docs</a></footer>
+  </section>
+
+  <section id="panel-video" role="tabpanel" aria-labelledby="tab-video" hidden>
+    <p class="sub">Upload a video; a ready-made detector finds where objects of our categories are, and the API's
+      classifier names each one (shown under the video as "named by"). A dashed box means the detector would have named it differently.</p>
+    <div id="vdrop" class="drop" tabindex="0" role="button" aria-label="Choose a video to analyse">
+      <strong>Choose a video</strong> or drop it here
+      <small>MP4, MOV, WebM, AVI, ... up to 200 MB; at most 300 analysed frames. Slow on a CPU (about 10 s per
+        analysed frame on the laptop it was built on); fast on a GPU.</small>
+    </div>
+    <input id="vpicker" type="file" accept="video/*" hidden>
+    <div class="controls">Analyse <select id="vfps">
+        <option value="0.5">1 frame every 2 seconds</option><option value="1" selected>1 frame</option>
+        <option value="2">2 frames</option><option value="5">5 frames</option>
+      </select> per second of video</div>
+
+    <div class="bar"><span id="vstatus"></span></div>
+    <div id="vresult" hidden>
+      <div class="player"><video id="video" controls muted playsinline></video><canvas id="overlay"></canvas></div>
+      <div id="timeline"></div>
+    </div>
+    <footer>The video is sent to <code>POST /detect-video</code> on this server &middot; <a href="docs">API docs</a></footer>
+  </section>
+</main>
+
+<script>
+  const API_URL = "predict";  // relative, so the page works wherever the API is served
+  const drop = document.getElementById("drop");
+  const picker = document.getElementById("picker");
+  const results = document.getElementById("results");
+  const statusText = document.getElementById("status");
+  const clearButton = document.getElementById("clear");
+  let queue = Promise.resolve();  // one request at a time, in the order the images were added
+
+  const percent = c => (c * 100).toFixed(1) + "%";
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  if (location.protocol === "file:") {
+    statusText.innerHTML = "Open this page through the API: start it with " +
+      "<code>uvicorn api.main:app --env-file api/.env</code>, then go to " +
+      '<a href="http://127.0.0.1:8000/">http://127.0.0.1:8000/</a>.';
+  }
+
+  drop.addEventListener("click", () => picker.click());
+  drop.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); picker.click(); }
+  });
+  picker.addEventListener("change", () => { addImages(picker.files); picker.value = ""; });
+  for (const type of ["dragenter", "dragover"]) {
+    drop.addEventListener(type, e => { e.preventDefault(); drop.classList.add("over"); });
+  }
+  for (const type of ["dragleave", "drop"]) {
+    drop.addEventListener(type, e => { e.preventDefault(); drop.classList.remove("over"); });
+  }
+  drop.addEventListener("drop", e => addImages(e.dataTransfer.files));
+  document.addEventListener("paste", e => {
+    if (!document.getElementById("panel-images").hidden) addImages(e.clipboardData ? e.clipboardData.files : []);
+  });
+  clearButton.addEventListener("click", () => {
+    for (const img of results.querySelectorAll("img")) URL.revokeObjectURL(img.src);
+    results.replaceChildren();
+    clearButton.hidden = true;
+  });
+
+  function addImages(fileList) {
+    const files = [...fileList];
+    if (!files.length) return;
+    const batch = document.createDocumentFragment();
+    for (const file of files) {
+      const card = el("div", "card");
+      const img = el("img", "thumb");
+      img.alt = file.name;
+      img.addEventListener("error", () => {  // not a picture the browser can show: no broken-image icon
+        URL.revokeObjectURL(img.src);
+        img.replaceWith(el("div", "thumb noimg", "no preview"));
+      });
+      img.src = URL.createObjectURL(file);
+      const info = el("div", "info");
+      info.append(el("div", "file", file.name || "pasted image"));
+      const slot = el("div", "wait", "Waiting...");
+      info.append(slot);
+      card.append(img, info);
+      batch.append(card);
+      queue = queue.then(() => classify(file, slot));
+    }
+    results.prepend(batch);  // newest batch on top
+    clearButton.hidden = false;
+  }
+
+  async function classify(file, slot) {
+    slot.textContent = "Classifying...";
+    const form = new FormData();
+    form.append("file", file, file.name || "pasted.png");
+    const started = performance.now();
+    try {
+      const response = await fetch(API_URL, { method: "POST", body: form });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = typeof data.detail === "string" ? data.detail : "the API could not process this file";
+        throw new Error(`Error ${response.status}: ${detail}`);
+      }
+      showPrediction(slot, data, performance.now() - started);
+      statusText.textContent = `Model: ${data.model} (${data.mode})`;
+    } catch (err) {
+      const message = err instanceof TypeError
+        ? "Could not reach the API. Is uvicorn still running?"
+        : err.message;
+      slot.className = "";
+      slot.replaceChildren(el("div", "error", message));
+    }
+  }
+
+  function showPrediction(slot, data, ms) {
+    slot.className = "";
+    slot.replaceChildren();
+    const top = el("div", "top", data.category || data.label);
+    top.append(el("span", "pct", percent(data.confidence)));
+    slot.append(top);
+
+    // pretrained (not fine-tuned) mode returns ImageNet labels; category is null when it isn't one of ours
+    if (!data.category) {
+      slot.append(el("div", "note warn", `ImageNet class "${data.label}" is not one of our 10 categories`));
+    } else if (data.label !== data.category) {
+      slot.append(el("div", "note", `ImageNet class: ${data.label}`));
+    } else if (data.confidence < 0.5) {
+      slot.append(el("div", "note warn", "Low confidence: the model is unsure about this one"));
+    }
+
+    for (const guess of data.top_k) {
+      const row = el("div", "row");
+      const name = guess.category && guess.category !== guess.label
+        ? `${guess.label} (${guess.category})` : guess.label;
+      const nameCell = el("span", "name", name);
+      nameCell.title = name;
+      const track = el("div", "track");
+      const fill = el("div", "fill");
+      fill.style.width = percent(guess.confidence);
+      track.append(fill);
+      row.append(nameCell, track, el("span", "val", percent(guess.confidence)));
+      slot.append(row);
+    }
+    slot.append(el("div", "time", `${Math.round(ms)} ms`));
+  }
+
+  // ---- tabs ----
+  function showTab(name) {
+    for (const tab of ["images", "video"]) {
+      document.getElementById(`tab-${tab}`).setAttribute("aria-selected", String(tab === name));
+      document.getElementById(`panel-${tab}`).hidden = tab !== name;
+    }
+    history.replaceState(null, "", name === "video" ? "#video" : location.pathname);
+  }
+  document.getElementById("tab-images").addEventListener("click", () => showTab("images"));
+  document.getElementById("tab-video").addEventListener("click", () => showTab("video"));
+  if (location.hash === "#video") showTab("video");
+  window.addEventListener("hashchange", () => showTab(location.hash === "#video" ? "video" : "images"));
+
+  // ---- video: POST /detect-video, then boxes drawn over the playing video and a timeline per category ----
+  const vdrop = document.getElementById("vdrop");
+  const vpicker = document.getElementById("vpicker");
+  const vfps = document.getElementById("vfps");
+  const vstatus = document.getElementById("vstatus");
+  const vresult = document.getElementById("vresult");
+  const video = document.getElementById("video");
+  const overlay = document.getElementById("overlay");
+  const timeline = document.getElementById("timeline");
+  const COLORS = ["#e8590c", "#1c7ed6", "#2f9e44", "#d6336c", "#7048e8", "#f59f00", "#0c8599", "#e03131",
+                  "#74b816", "#ae3ec9", "#868e96"];
+  const colorOf = {};
+  let vdata = null, vduration = 0, videoUrl = null, busy = false;
+
+  const color = cat => colorOf[cat] || (colorOf[cat] = COLORS[Object.keys(colorOf).length % COLORS.length]);
+  const clock = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
+
+  vdrop.addEventListener("click", () => vpicker.click());
+  vdrop.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); vpicker.click(); }
+  });
+  vpicker.addEventListener("change", () => { analyseVideo(vpicker.files[0]); vpicker.value = ""; });
+  for (const type of ["dragenter", "dragover"]) {
+    vdrop.addEventListener(type, e => { e.preventDefault(); vdrop.classList.add("over"); });
+  }
+  for (const type of ["dragleave", "drop"]) {
+    vdrop.addEventListener(type, e => { e.preventDefault(); vdrop.classList.remove("over"); });
+  }
+  vdrop.addEventListener("drop", e => analyseVideo(e.dataTransfer.files[0]));
+  video.addEventListener("error", () => {
+    if (video.getAttribute("src")) {
+      vstatus.textContent += " This browser can't play this video format; the timeline below still applies.";
+    }
+  });
+
+  async function analyseVideo(file) {
+    if (!file || busy) return;
+    busy = true;
+    if (videoUrl) URL.revokeObjectURL(videoUrl);
+    videoUrl = URL.createObjectURL(file);
+    video.src = videoUrl;
+    vdata = null;
+    timeline.replaceChildren();
+    vresult.hidden = false;
+    const started = performance.now();
+    const waiting = () => `Analysing ${file.name}... ${Math.round((performance.now() - started) / 1000)} s ` +
+      "(the first video also loads the detector)";
+    vstatus.textContent = waiting();
+    const ticker = setInterval(() => { vstatus.textContent = waiting(); }, 1000);
+    const form = new FormData();
+    form.append("file", file, file.name);
+    form.append("fps", vfps.value);
+    try {
+      const response = await fetch("detect-video", { method: "POST", body: form });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = typeof data.detail === "string" ? data.detail : "the API could not process this video";
+        throw new Error(`Error ${response.status}: ${detail}`);
+      }
+      clearInterval(ticker);
+      vdata = data;
+      showTimeline(data);
+      vstatus.textContent = `${data.frames_analyzed} frames analysed in ${data.seconds} s` +
+        (data.truncated ? " (video cut off at the frame limit)" : "") +
+        ` · boxes found by ${data.detector} · named by ${data.labels_from}` +
+        (data.disagreements === null ? "" : ` · ${data.disagreements} of ${data.boxes} boxes named differently by ` +
+          "the detector (dashed)");
+    } catch (err) {
+      clearInterval(ticker);
+      const message = err instanceof TypeError ? "Could not reach the API. Is uvicorn still running?" : err.message;
+      vstatus.replaceChildren(el("span", "error", message));
+    } finally {
+      busy = false;
+    }
+  }
+
+  function showTimeline(d) {
+    const step = 1 / d.sampled_fps;
+    const last = d.frames.length ? d.frames[d.frames.length - 1].time_s : 0;
+    vduration = Math.max(d.duration_s || 0, last + step);
+    timeline.replaceChildren();
+    if (!d.summary.length) {
+      timeline.append(el("p", "note", `None of our categories found (box score threshold ${d.threshold}).`));
+      return;
+    }
+    for (const s of d.summary) {
+      const name = el("div", "tname");
+      const dot = el("span", "dot");
+      dot.style.background = color(s.category);
+      name.append(dot, document.createTextNode(s.category));
+      name.title = s.category;
+      const track = el("div", "tl");
+      for (const seg of s.segments) {
+        const block = el("button", "seg");
+        block.type = "button";
+        block.style.left = percent(seg.start_s / vduration);
+        block.style.width = percent((seg.end_s - seg.start_s + step) / vduration);
+        block.style.background = color(s.category);
+        block.title = `${s.category}: ${clock(seg.start_s)} to ${clock(seg.end_s + step)}`;
+        block.addEventListener("click", e => { e.stopPropagation(); video.pause(); video.currentTime = seg.start_s; });
+        track.append(block);
+      }
+      track.append(el("div", "head"));
+      track.addEventListener("click", e => {
+        const box = track.getBoundingClientRect();
+        video.pause();
+        video.currentTime = (e.clientX - box.left) / box.width * vduration;
+      });
+      const ranges = s.segments.map(g => g.start_s === g.end_s ? clock(g.start_s)
+        : `${clock(g.start_s)}–${clock(g.end_s)}`).join(", ");
+      const info = el("div", "tinfo", `${ranges} · up to ${s.max_count} at once · best score ${percent(s.max_confidence)}`);
+      const row = el("div", "trow");
+      row.append(name, track, info);
+      timeline.append(row);
+    }
+  }
+
+  function drawBoxes() {
+    const dpr = window.devicePixelRatio || 1;
+    const cw = video.clientWidth, ch = video.clientHeight;
+    if (overlay.width !== Math.round(cw * dpr) || overlay.height !== Math.round(ch * dpr)) {
+      overlay.width = Math.round(cw * dpr);
+      overlay.height = Math.round(ch * dpr);
+    }
+    const ctx = overlay.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cw, ch);
+    if (!vdata) return;
+    const t = video.currentTime;
+    for (const head of timeline.querySelectorAll(".head")) head.style.left = percent(Math.min(1, t / vduration));
+    if (!video.videoWidth) return;
+    const step = 1 / vdata.sampled_fps;
+    let frame = null;  // the analysed frame nearest the current playback time
+    for (const f of vdata.frames) {
+      if (f.time_s <= t + step / 2) frame = f; else break;
+    }
+    if (!frame || t - frame.time_s > step) return;
+    const scale = Math.min(cw / video.videoWidth, ch / video.videoHeight);  // video is letterboxed to fit
+    const ox = (cw - video.videoWidth * scale) / 2, oy = (ch - video.videoHeight * scale) / 2;
+    ctx.lineWidth = 2;
+    ctx.font = "600 12px system-ui, sans-serif";
+    ctx.textBaseline = "top";
+    for (const d of frame.detections) {
+      const [x1, y1, x2, y2] = d.box;
+      const x = ox + x1 * scale, y = oy + y1 * scale;
+      ctx.strokeStyle = ctx.fillStyle = color(d.category);
+      ctx.setLineDash(d.agrees === false ? [6, 4] : []);  // dashed: our model and the detector disagree
+      ctx.strokeRect(x, y, (x2 - x1) * scale, (y2 - y1) * scale);
+      ctx.setLineDash([]);
+      const label = `${d.category} ${percent(d.confidence)}` +
+        (d.agrees === false ? ` (detector: ${d.detector_label})` : "");
+      const ly = y >= 18 ? y - 18 : y;
+      ctx.fillRect(x - 1, ly, ctx.measureText(label).width + 8, 18);
+      ctx.fillStyle = "#fff";
+      ctx.fillText(label, x + 3, ly + 3);
+    }
+  }
+  (function animate() { drawBoxes(); requestAnimationFrame(animate); })();
+</script>
+</body>
+</html>
